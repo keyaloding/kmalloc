@@ -49,7 +49,7 @@ void* smalloc(int size_of_payload, Malloc_Status* status) {
   }
   block->allocated = 1;
   int bytes_left = block->size - alloc_size;
-  void* payload_start = (void*)(block + 1);
+  unsigned long* payload_start = (unsigned long*)(block + 1);
   if (bytes_left >= sizeof(mem_block)) {
     void *head_ptr = (void*)(block) + alloc_size;
     mem_block* new_block = (mem_block*)head_ptr;
@@ -77,8 +77,11 @@ void* smalloc(int size_of_payload, Malloc_Status* status) {
       head = block->next;
     }
   }
+  block->prev = NULL;
+  block->next = NULL;
   status->hops = hops;
-  status->payload_offset = (unsigned long)payload_start - (unsigned long)heap_address;
+  status->payload_offset = (unsigned long)payload_start -
+                           (unsigned long)heap_address;
   status->success = 1;
   return payload_start;
 }
@@ -110,7 +113,7 @@ void sfree(void* ptr) {
     }
   }
   p = (char*)alloc_block + alloc_block->size;
-  if ((mem_block*)p == right_block) {
+  if (right_block && (mem_block*)p == right_block) {
     merge_right = true;
   }
   if (!merge_left && !merge_right) {
