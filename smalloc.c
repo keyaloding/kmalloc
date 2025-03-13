@@ -14,6 +14,7 @@ int my_init(int size_of_region) {
   void* heap = mmap(NULL, size_of_region, PROT_WRITE | PROT_READ,
                     MAP_SHARED, fd, 0);
   if (close(fd) < 0 || heap == MAP_FAILED)  {
+    fprintf(stderr, "Requested heap size exceeds available memory\n");
     return -1;
   }
   heap_address = heap;
@@ -37,10 +38,7 @@ void* smalloc(int size_of_payload, Malloc_Status* status) {
   }
   mem_block* block = head;
   while (block && block->size < alloc_size) {
-    // printf("a");
     hops++;
-    if (block == block->next) break;
-    if (block->next && block == block->next->next) break;
     block = block->next;
   }
   if (!block) {
@@ -59,15 +57,15 @@ void* smalloc(int size_of_payload, Malloc_Status* status) {
     block->size -= new_block->size;
     new_block->allocated = 0;
     new_block->prev = block->prev;
-    if (block->prev) {
+    if (new_block->prev) {
       new_block->prev->next = new_block;
     } else {
       head = new_block;
     }
+    new_block->next = block->next;
     if (new_block->next) {
       new_block->next->prev = new_block;
     }
-    new_block->next = block->next;
   } else {
     block->size += bytes_left;
     if (block->next) {
@@ -82,23 +80,12 @@ void* smalloc(int size_of_payload, Malloc_Status* status) {
   status->hops = hops;
   status->payload_offset = (unsigned long)payload_start - (unsigned long)heap_address;
   status->success = 1;
-  printf("smalloc: %p, size=%d\n", block, block->size);
-  block = head;
-  while (block) {
-    if (block == block->next) {
-      printf("block == block->next in smalloc\n");
-      exit(1);
-    }
-    block = block->next;
-  }
   return payload_start;
 }
 
 void sfree(void* ptr) {
-  // return;
   if (!ptr) return;
   mem_block* alloc_block = (mem_block*)(ptr - sizeof(mem_block));
-  printf("sfree(%p) | ", alloc_block);
   alloc_block->allocated = 0;
   if (!head) {
     head = alloc_block;
@@ -107,17 +94,13 @@ void sfree(void* ptr) {
   }
   mem_block *left_block = NULL, *right_block = head;
   while (right_block && right_block < alloc_block) {
-    printf("b");
     right_block = right_block->next;
     if (left_block) {
       left_block = left_block->next;
     } else {
       left_block = head;
     }
-    // if (right_block == right_block->next) break;
-    // if (right_block->next && right_block == right_block->next->next) break;
   }
-  printf("left: %p, alloc_block: %p, right: %p | ", left_block, alloc_block, right_block);
   bool merge_left = false, merge_right = false;
   char* p;
   if (left_block) {
@@ -127,11 +110,10 @@ void sfree(void* ptr) {
     }
   }
   p = (char*)alloc_block + alloc_block->size;
-  if (right_block && (mem_block*)p == right_block) {
+  if ((mem_block*)p == right_block) {
     merge_right = true;
   }
   if (!merge_left && !merge_right) {
-    printf("Case 1 (no merging)... ");
     if (left_block) {
       left_block->next = alloc_block;
     } else {
@@ -143,7 +125,6 @@ void sfree(void* ptr) {
     }
     alloc_block->next = right_block;
   } else if (!merge_left && merge_right) {
-    printf("Case 2 (merging w/ right block)... ");
     alloc_block->size += right_block->size;
     if (left_block) {
       left_block->next = alloc_block;
@@ -157,23 +138,12 @@ void sfree(void* ptr) {
       alloc_block->next->prev = alloc_block;
     }
   } else if (merge_left && !merge_right) {
-    printf("Case 3 (merging w/ left block)... ");
     left_block->size += alloc_block->size;
   } else {
-    printf("Case 4 (merging both blocks)... ");
     left_block->size += alloc_block->size + right_block->size;
     left_block->next = right_block->next;
     if (right_block->next) {
       right_block->next->prev = alloc_block;
     }
   }
-  left_block = head;
-  while (left_block) {
-    if (left_block == left_block->next) {
-      printf("\nblock == block->next in sfree\n");
-      exit(1);
-    }
-    left_block = left_block->next;
-  }
-  printf("completed\n");
 }
