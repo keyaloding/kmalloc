@@ -1,11 +1,14 @@
 #include "smalloc.h"
 
+#define PAGE_SIZE 4096
+#define BYTE_ALIGN 8
+
 mem_block *head;
 void *heap_address;
 
 int my_init(int size_of_region) {
-  if (size_of_region % 4096) {
-    size_of_region += 4096 - (size_of_region % 4096);
+  if (size_of_region % PAGE_SIZE) {
+    size_of_region += PAGE_SIZE - (size_of_region % PAGE_SIZE);
   }
   int fd = open("/dev/zero", O_RDWR);
   void* heap = mmap(NULL, size_of_region, PROT_WRITE | PROT_READ,
@@ -25,22 +28,25 @@ void* smalloc(int size_of_payload, Malloc_Status* status) {
   if (size_of_payload < 0) {
     status->success = 0;
     status->payload_offset = -1;
-    status->hops = 0;
+    status->hops = -1;
     return NULL;
   }
   int alloc_size = size_of_payload + sizeof(mem_block), hops = 0;
-  if (alloc_size % 8) {
-    alloc_size += 8 - (alloc_size % 8);
+  if (alloc_size % BYTE_ALIGN) {
+    alloc_size += BYTE_ALIGN - (alloc_size % BYTE_ALIGN);
   }
   mem_block* block = head;
   while (block && block->size < alloc_size) {
+    // printf("a");
     hops++;
+    if (block == block->next) break;
+    if (block->next && block == block->next->next) break;
     block = block->next;
   }
   if (!block) {
     status->success = 0;
     status->payload_offset = -1;
-    status->hops = 0;
+    status->hops = -1;
     return NULL;
   }
   block->allocated = 1;
@@ -50,24 +56,25 @@ void* smalloc(int size_of_payload, Malloc_Status* status) {
     void *head_ptr = (void*)(block) + alloc_size;
     mem_block* new_block = (mem_block*)head_ptr;
     new_block->size = bytes_left;
+    block->size -= new_block->size;
     new_block->allocated = 0;
+    new_block->prev = block->prev;
     if (block->prev) {
-      new_block->prev = block->prev;
       new_block->prev->next = new_block;
     } else {
       head = new_block;
     }
-    if (block->next) {
-      new_block->next = block->next;
+    if (new_block->next) {
       new_block->next->prev = new_block;
     }
+    new_block->next = block->next;
   } else {
     block->size += bytes_left;
+    if (block->next) {
+      block->next->prev = block->prev;
+    }
     if (block->prev) {
       block->prev->next = block->next;
-      if (block->next) {
-        block->next->prev = block->prev;
-      }
     } else {
       head = block->next;
     }
@@ -75,24 +82,56 @@ void* smalloc(int size_of_payload, Malloc_Status* status) {
   status->hops = hops;
   status->payload_offset = (unsigned long)payload_start - (unsigned long)heap_address;
   status->success = 1;
+  printf("smalloc: %p, size=%d\n", block, block->size);
+  block = head;
+  while (block) {
+    if (block == block->next) {
+      printf("block == block->next in smalloc\n");
+      exit(1);
+    }
+    block = block->next;
+  }
   return payload_start;
 }
 
 void sfree(void* ptr) {
-  printf("ptr at %p\n", ptr);
-  mem_block* alloc_block = (mem_block*)(ptr - 24);
-  printf("alloc_block at %p\n", alloc_block);
-  // printf("ptr - alloc_block = %ld\n", (uintptr_t)ptr - (uintptr_t)alloc_block);
+  // return;
+  if (!ptr) return;
+  mem_block* alloc_block = (mem_block*)(ptr - sizeof(mem_block));
+  printf("sfree(%p) | ", alloc_block);
   alloc_block->allocated = 0;
-  mem_block *right_block = head, *left_block = NULL;
-  while (right_block && right_block < alloc_block) {
-    right_block = right_block->next;
-    if (!left_block) left_block = head;
-    else left_block = left_block->next;
+  if (!head) {
+    head = alloc_block;
+    head->prev = NULL, head->next = NULL;
+    return;
   }
-  if ((!left_block || (left_block && left_block->allocated)) &&
-      (!right_block) || (right_block && right_block->allocated)) {
-    // Case 1: No coalescing
+  mem_block *left_block = NULL, *right_block = head;
+  while (right_block && right_block < alloc_block) {
+    printf("b");
+    right_block = right_block->next;
+    if (left_block) {
+      left_block = left_block->next;
+    } else {
+      left_block = head;
+    }
+    // if (right_block == right_block->next) break;
+    // if (right_block->next && right_block == right_block->next->next) break;
+  }
+  printf("left: %p, alloc_block: %p, right: %p | ", left_block, alloc_block, right_block);
+  bool merge_left = false, merge_right = false;
+  char* p;
+  if (left_block) {
+    p = (char*)left_block + left_block->size;
+    if ((mem_block*)p == alloc_block) {
+      merge_left = true;
+    }
+  }
+  p = (char*)alloc_block + alloc_block->size;
+  if (right_block && (mem_block*)p == right_block) {
+    merge_right = true;
+  }
+  if (!merge_left && !merge_right) {
+    printf("Case 1 (no merging)... ");
     if (left_block) {
       left_block->next = alloc_block;
     } else {
@@ -101,37 +140,40 @@ void sfree(void* ptr) {
     alloc_block->prev = left_block;
     if (right_block) {
       right_block->prev = alloc_block;
-    } 
+    }
     alloc_block->next = right_block;
-  } else if (1) {
-    // Case 2: Coalesce with right block
+  } else if (!merge_left && merge_right) {
+    printf("Case 2 (merging w/ right block)... ");
+    alloc_block->size += right_block->size;
     if (left_block) {
       left_block->next = alloc_block;
-      alloc_block->prev = left_block;
-      alloc_block->next = right_block->next;
-      alloc_block->next->prev = alloc_block;
-    } else {
-
     }
-  } else if (1) {
-    // Case 3: Coalesce with left block
+    else {
+      head = alloc_block;
+    }
+    alloc_block->prev = left_block;
+    alloc_block->next = right_block->next;
+    if (alloc_block->next) {
+      alloc_block->next->prev = alloc_block;
+    }
+  } else if (merge_left && !merge_right) {
+    printf("Case 3 (merging w/ left block)... ");
     left_block->size += alloc_block->size;
   } else {
-    // Case 4: Coalesce all 3 blocks
+    printf("Case 4 (merging both blocks)... ");
     left_block->size += alloc_block->size + right_block->size;
     left_block->next = right_block->next;
-    if (left_block->next) {
-      left_block->next->prev = left_block;
+    if (right_block->next) {
+      right_block->next->prev = alloc_block;
     }
   }
-  if (left_block + left_block->size / 24 == alloc_block) {
-    left_block->size += alloc_block->size;
-  } else {
-    left_block->next = alloc_block;
-    alloc_block->prev = left_block;
-    if (right_block) {
-      right_block->prev = alloc_block;
-      alloc_block->next = right_block;
+  left_block = head;
+  while (left_block) {
+    if (left_block == left_block->next) {
+      printf("\nblock == block->next in sfree\n");
+      exit(1);
     }
+    left_block = left_block->next;
   }
+  printf("completed\n");
 }
