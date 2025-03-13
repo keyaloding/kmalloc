@@ -11,6 +11,9 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 
+#define PAGE_SIZE 4096
+#define BYTE_ALIGN 8
+
 /* Represents the header of an allocated/free memory block. The format in
  * memory is as follows: 
  * - Block size (int, 4 bytes)
@@ -21,14 +24,14 @@
  * - Padding (only if extra bytes are needed to enforce 8-byte alignment)
  */
 typedef struct mem_block {
-  int size, allocated;
+  unsigned int size, allocated;
   mem_block *prev, *next;
 } mem_block;
 
-/* Gives information about the status of the `malloc()` call*/
+/* Gives information about the status of the `malloc()` call. */
 typedef struct Malloc_Status{
-  /* 0 if malloc fails, 1 if successful.*/
-  int success;
+  /* true if successful, false if unsuccessful. */
+  bool success;
   
   /* Offset of the payload in the heap (in bytes). This is equal to
    * (unsigned long)payload_pointer - (unsigned long)heap_start_address.
@@ -44,22 +47,19 @@ typedef struct Malloc_Status{
   int hops;
 } Malloc_Status;
 
-/*
- * Called one time by the application program to allocate the initial heap area
+/* Called one time by the application program to allocate the initial heap area
  * and set global variables `head` and `heap_address`. The size of the heap area
  * must be a multiple of the page size, 4096.
  */
-int my_init(int size_of_region);
+int my_init(unsigned int size_of_region);
 
-/*
- * Returns a pointer to the start of the payload or NULL if there is not enough
+/* Returns a pointer to the start of the payload or NULL if there is not enough
  * contiguous free space within the memory allocated by my_init() to satisfy
  * the request.
  */
-void *smalloc(int size_of_payload, Malloc_Status* status);
+void *smalloc(unsigned int size_of_payload, Malloc_Status* status);
 
-/*
- * Frees the target block. `ptr` points to the start of the payload.
+/* Frees the target block. `ptr` points to the start of the payload.
  */
 void sfree(void *ptr);
 

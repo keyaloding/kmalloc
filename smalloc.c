@@ -1,12 +1,9 @@
 #include "smalloc.h"
 
-#define PAGE_SIZE 4096
-#define BYTE_ALIGN 8
+mem_block *head;      // First free block in the heap
+void *heap_address;   // Start of the heap, set by my_init
 
-mem_block *head;
-void *heap_address;
-
-int my_init(int size_of_region) {
+int my_init(unsigned int size_of_region) {
   if (size_of_region % PAGE_SIZE) {
     size_of_region += PAGE_SIZE - (size_of_region % PAGE_SIZE);
   }
@@ -14,24 +11,18 @@ int my_init(int size_of_region) {
   void* heap = mmap(NULL, size_of_region, PROT_WRITE | PROT_READ,
                     MAP_SHARED, fd, 0);
   if (close(fd) < 0 || heap == MAP_FAILED)  {
-    fprintf(stderr, "Requested heap size exceeds available memory\n");
     return -1;
   }
   heap_address = heap;
   head = (mem_block*)heap;
   head->size = size_of_region;
   head->allocated = 0;
-  head->prev = NULL; head->next = NULL;
+  head->prev = NULL;
+  head->next = NULL;
   return 0;
 }
 
-void* smalloc(int size_of_payload, Malloc_Status* status) {
-  if (size_of_payload < 0) {
-    status->success = 0;
-    status->payload_offset = -1;
-    status->hops = -1;
-    return NULL;
-  }
+void* smalloc(unsigned int size_of_payload, Malloc_Status* status) {
   int alloc_size = size_of_payload + sizeof(mem_block), hops = 0;
   if (alloc_size % BYTE_ALIGN) {
     alloc_size += BYTE_ALIGN - (alloc_size % BYTE_ALIGN);
@@ -42,7 +33,7 @@ void* smalloc(int size_of_payload, Malloc_Status* status) {
     block = block->next;
   }
   if (!block) {
-    status->success = 0;
+    status->success = false;
     status->payload_offset = -1;
     status->hops = -1;
     return NULL;
@@ -50,6 +41,7 @@ void* smalloc(int size_of_payload, Malloc_Status* status) {
   block->allocated = 1;
   int bytes_left = block->size - alloc_size;
   unsigned long* payload_start = (unsigned long*)(block + 1);
+  
   if (bytes_left >= sizeof(mem_block)) {
     void *head_ptr = (void*)(block) + alloc_size;
     mem_block* new_block = (mem_block*)head_ptr;
@@ -67,7 +59,6 @@ void* smalloc(int size_of_payload, Malloc_Status* status) {
       new_block->next->prev = new_block;
     }
   } else {
-    block->size += bytes_left;
     if (block->next) {
       block->next->prev = block->prev;
     }
@@ -82,7 +73,7 @@ void* smalloc(int size_of_payload, Malloc_Status* status) {
   status->hops = hops;
   status->payload_offset = (unsigned long)payload_start -
                            (unsigned long)heap_address;
-  status->success = 1;
+  status->success = true;
   return payload_start;
 }
 
@@ -92,7 +83,8 @@ void sfree(void* ptr) {
   alloc_block->allocated = 0;
   if (!head) {
     head = alloc_block;
-    head->prev = NULL, head->next = NULL;
+    head->prev = NULL;
+    head->next = NULL;
     return;
   }
   mem_block *left_block = NULL, *right_block = head;
@@ -116,6 +108,7 @@ void sfree(void* ptr) {
   if (right_block && (mem_block*)p == right_block) {
     merge_right = true;
   }
+
   if (!merge_left && !merge_right) {
     if (left_block) {
       left_block->next = alloc_block;
@@ -146,7 +139,7 @@ void sfree(void* ptr) {
     left_block->size += alloc_block->size + right_block->size;
     left_block->next = right_block->next;
     if (right_block->next) {
-      right_block->next->prev = alloc_block;
+      right_block->next->prev = left_block;
     }
   }
 }
