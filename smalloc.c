@@ -3,7 +3,7 @@
 mem_block *head;      // First free block in the heap
 void *heap_address;   // Start of the heap, set by my_init
 
-int my_init(unsigned int size_of_region) {
+bool heap_init(unsigned int size_of_region) {
   if (size_of_region % PAGE_SIZE) {
     size_of_region += PAGE_SIZE - (size_of_region % PAGE_SIZE);
   }
@@ -11,18 +11,18 @@ int my_init(unsigned int size_of_region) {
   void* heap = mmap(NULL, size_of_region, PROT_WRITE | PROT_READ,
                     MAP_SHARED, fd, 0);
   if (close(fd) < 0 || heap == MAP_FAILED)  {
-    return -1;
+    fprintf(stderr, "Requested heap size exceeds available memory\n");
+    return false;
   }
   heap_address = heap;
   head = (mem_block*)heap;
   head->size = size_of_region;
   head->allocated = 0;
-  head->prev = NULL;
-  head->next = NULL;
-  return 0;
+  head->prev = NULL, head->next = NULL;
+  return true;
 }
 
-void* smalloc(unsigned int size_of_payload, Malloc_Status* status) {
+void* smalloc(unsigned int size_of_payload) {
   int alloc_size = size_of_payload + sizeof(mem_block), hops = 0;
   if (alloc_size % BYTE_ALIGN) {
     alloc_size += BYTE_ALIGN - (alloc_size % BYTE_ALIGN);
@@ -33,9 +33,7 @@ void* smalloc(unsigned int size_of_payload, Malloc_Status* status) {
     block = block->next;
   }
   if (!block) {
-    status->success = false;
-    status->payload_offset = -1;
-    status->hops = -1;
+    fprintf(stderr, "Insufficient contiguous memory in the heap\n");
     return NULL;
   }
   block->allocated = 1;
@@ -68,23 +66,21 @@ void* smalloc(unsigned int size_of_payload, Malloc_Status* status) {
       head = block->next;
     }
   }
-  block->prev = NULL;
-  block->next = NULL;
-  status->hops = hops;
-  status->payload_offset = (unsigned long)payload_start -
-                           (unsigned long)heap_address;
-  status->success = true;
+  block->prev = NULL, block->next = NULL;
   return payload_start;
 }
 
 void sfree(void* ptr) {
   if (!ptr) return;
   mem_block* alloc_block = (mem_block*)(ptr - sizeof(mem_block));
+  if (!alloc_block->allocated) {
+    fprintf(stdout, "%p has already been freed\n", ptr);
+    return;
+  }
   alloc_block->allocated = 0;
   if (!head) {
     head = alloc_block;
-    head->prev = NULL;
-    head->next = NULL;
+    head->prev = NULL, head->next = NULL;
     return;
   }
   mem_block *left_block = NULL, *right_block = head;
