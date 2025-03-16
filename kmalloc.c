@@ -1,7 +1,7 @@
-#include "smalloc.h"
+#include "kmalloc.h"
 
 mem_block *head;      // First free block in the heap
-void *heap_address;   // Start of the heap, set by my_init
+void *heap_address;   // Start of the heap, set by `heap_init()`
 
 bool heap_init(unsigned int size_of_region) {
   if (size_of_region % PAGE_SIZE) {
@@ -11,7 +11,7 @@ bool heap_init(unsigned int size_of_region) {
   void* heap = mmap(NULL, size_of_region, PROT_WRITE | PROT_READ,
                     MAP_SHARED, fd, 0);
   if (close(fd) < 0 || heap == MAP_FAILED)  {
-    fprintf(stderr, "Requested heap size exceeds available memory\n");
+    fprintf(stderr, "Error: Requested heap size exceeds available memory\n");
     return false;
   }
   heap_address = heap;
@@ -22,18 +22,17 @@ bool heap_init(unsigned int size_of_region) {
   return true;
 }
 
-void* smalloc(unsigned int size_of_payload) {
-  int alloc_size = size_of_payload + sizeof(mem_block), hops = 0;
+void* kmalloc(unsigned int size_of_payload) {
+  int alloc_size = size_of_payload + sizeof(mem_block);
   if (alloc_size % BYTE_ALIGN) {
     alloc_size += BYTE_ALIGN - (alloc_size % BYTE_ALIGN);
   }
   mem_block* block = head;
   while (block && block->size < alloc_size) {
-    hops++;
     block = block->next;
   }
   if (!block) {
-    fprintf(stderr, "Insufficient contiguous memory in the heap\n");
+    fprintf(stderr, "Error: Insufficient contiguous memory in the heap\n");
     return NULL;
   }
   block->allocated = 1;
@@ -70,7 +69,7 @@ void* smalloc(unsigned int size_of_payload) {
   return payload_start;
 }
 
-void sfree(void* ptr) {
+void kfree(void* ptr) {
   if (!ptr) return;
   mem_block* alloc_block = (mem_block*)(ptr - sizeof(mem_block));
   if (!alloc_block->allocated) {

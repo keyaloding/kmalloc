@@ -1,13 +1,9 @@
-#ifndef _smalloc_H_
-#define _smalloc_H_
+#ifndef _kmalloc_H_
+#define _kmalloc_H_
 
 #include <stdio.h>
-#include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/mman.h>
 
@@ -40,9 +36,9 @@ bool heap_init(unsigned int size_of_region);
  * enough contiguous free space within the memory allocated by `heap_init()`
  * to satisfy the request.
  */
-void *smalloc(unsigned int size_of_payload);
+void *kmalloc(unsigned int size_of_payload);
 
 /* Frees the target block given the address of the start of the payload. */
-void sfree(void *ptr);
+void kfree(void *ptr);
 
 #endif

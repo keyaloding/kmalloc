@@ -1,7 +1,7 @@
 all: test
 
-test: test.c smalloc.c
-	gcc -o test test.c smalloc.c -I. -Werror
+test: test.c kmalloc.c
+	gcc -o test test.c kmalloc.c -I. -Werror
 
 clean:
 	rm -f test
