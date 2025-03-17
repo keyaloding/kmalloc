@@ -12,7 +12,14 @@ although this is technically not necessary.
 
 ## How to Use
 
-Here is an example of how you might use `kmalloc()` and `kfree()` to dynamically allocate an integer array of length `n`.
+First, clone the repository and create a new C/C++ file in the
+`kmalloc` repository:
+```Unix
+git clone https://github.com/keyaloding/kmalloc
+cd kmalloc
+```
+Here is an example of how you might use `kmalloc()` and `kfree()` to
+dynamically allocate an integer array of length `n`.  
 
 ```C
 #include "kmalloc.h"
