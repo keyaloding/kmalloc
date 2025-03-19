@@ -38,6 +38,12 @@ bool heap_init(unsigned int size_of_region);
  */
 void *kmalloc(unsigned int size_of_payload);
 
+/* Returns a pointer to the start of the payload or `NULL` if there is not
+ * enough contiguous free space within the memory allocated by `heap_init()`
+ * to satisfy the request. The memory is zeroed out.
+*/
+void *kcalloc(unsigned int num_elements, unsigned int size_of_element);
+
 /* Frees the target block given the address of the start of the payload. */
 void kfree(void *ptr);
 

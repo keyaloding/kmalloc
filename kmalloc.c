@@ -10,7 +10,11 @@ bool heap_init(unsigned int size_of_region) {
   int fd = open("/dev/zero", O_RDWR);
   void* heap = mmap(NULL, size_of_region, PROT_WRITE | PROT_READ,
                     MAP_SHARED, fd, 0);
-  if (close(fd) < 0 || heap == MAP_FAILED)  {
+  if (close(fd) == -1) {
+    fprintf(stderr, "Error: Unable to close file descriptor\n");
+    return false;
+  }
+  if (heap == MAP_FAILED)  {
     fprintf(stderr, "Error: Requested heap size exceeds available memory\n");
     return false;
   }
@@ -22,12 +26,12 @@ bool heap_init(unsigned int size_of_region) {
   return true;
 }
 
-void* kmalloc(unsigned int size_of_payload) {
+void *kmalloc(unsigned int size_of_payload) {
   int alloc_size = size_of_payload + sizeof(mem_block);
   if (alloc_size % BYTE_ALIGN) {
     alloc_size += BYTE_ALIGN - (alloc_size % BYTE_ALIGN);
   }
-  mem_block* block = head;
+  mem_block *block = head;
   while (block && block->size < alloc_size) {
     block = block->next;
   }
@@ -37,11 +41,11 @@ void* kmalloc(unsigned int size_of_payload) {
   }
   block->allocated = 1;
   int bytes_left = block->size - alloc_size;
-  unsigned long* payload_start = (unsigned long*)(block + 1);
+  unsigned long *payload_start = (unsigned long*)(block + 1);
   
   if (bytes_left >= sizeof(mem_block)) {
     void *head_ptr = (void*)(block) + alloc_size;
-    mem_block* new_block = (mem_block*)head_ptr;
+    mem_block *new_block = (mem_block*)head_ptr;
     new_block->size = bytes_left;
     block->size -= new_block->size;
     new_block->allocated = 0;
@@ -65,13 +69,21 @@ void* kmalloc(unsigned int size_of_payload) {
       head = block->next;
     }
   }
-  block->prev = NULL, block->next = NULL;
   return payload_start;
+}
+
+void *kcalloc(unsigned int num_elements, unsigned int size_of_element) {
+  void *ptr = kmalloc(num_elements * size_of_element);
+  if (!ptr) return NULL;
+  for (int i = 0; i < num_elements * size_of_element; i++) {
+    *((char*)ptr + i) = 0;
+  }
+  return ptr;
 }
 
 void kfree(void* ptr) {
   if (!ptr) return;
-  mem_block* alloc_block = (mem_block*)(ptr - sizeof(mem_block));
+  mem_block *alloc_block = (mem_block*)(ptr - sizeof(mem_block));
   if (!alloc_block->allocated) {
     fprintf(stdout, "%p has already been freed\n", ptr);
     return;
@@ -92,7 +104,7 @@ void kfree(void* ptr) {
     }
   }
   bool merge_left = false, merge_right = false;
-  char* p;
+  char *p;
   if (left_block) {
     p = (char*)left_block + left_block->size;
     if ((mem_block*)p == alloc_block) {
