@@ -1,14 +1,14 @@
 #include "kmalloc.h"
 
-mem_block *head;      // First free block in the heap
-void *heap_address;   // Start of the heap, set by `heap_init()`
+mem_block *head = NULL;      // First free block in the heap
+void *heap_address = NULL;   // Start of the heap, set by `heap_init()`
 
-bool heap_init(unsigned int size_of_region) {
-  if (size_of_region % PAGE_SIZE) {
-    size_of_region += PAGE_SIZE - (size_of_region % PAGE_SIZE);
+bool heap_init(unsigned int heap_size) {
+  if (heap_size % PAGE_SIZE) {
+    heap_size += PAGE_SIZE - (heap_size % PAGE_SIZE);
   }
   int fd = open("/dev/zero", O_RDWR);
-  void* heap = mmap(NULL, size_of_region, PROT_WRITE | PROT_READ,
+  void* heap = mmap(NULL, heap_size, PROT_WRITE | PROT_READ,
                     MAP_SHARED, fd, 0);
   if (close(fd) == -1) {
     fprintf(stderr, "Error: Unable to close file descriptor\n");
@@ -20,14 +20,14 @@ bool heap_init(unsigned int size_of_region) {
   }
   heap_address = heap;
   head = (mem_block*)heap;
-  head->size = size_of_region;
+  head->size = heap_size;
   head->allocated = 0;
   head->prev = NULL, head->next = NULL;
   return true;
 }
 
-void *kmalloc(unsigned int size_of_payload) {
-  int alloc_size = size_of_payload + sizeof(mem_block);
+void *kmalloc(unsigned int num_bytes) {
+  int alloc_size = num_bytes + sizeof(mem_block);
   if (alloc_size % BYTE_ALIGN) {
     alloc_size += BYTE_ALIGN - (alloc_size % BYTE_ALIGN);
   }
@@ -72,10 +72,10 @@ void *kmalloc(unsigned int size_of_payload) {
   return payload_start;
 }
 
-void *kcalloc(unsigned int num_elements, unsigned int size_of_element) {
-  void *ptr = kmalloc(num_elements * size_of_element);
+void *kcalloc(unsigned int num_elements, unsigned int element_size) {
+  void *ptr = kmalloc(num_elements * element_size);
   if (!ptr) return NULL;
-  for (int i = 0; i < num_elements * size_of_element; i++) {
+  for (int i = 0; i < num_elements * element_size; i++) {
     *((char*)ptr + i) = 0;
   }
   return ptr;
@@ -112,7 +112,7 @@ void kfree(void* ptr) {
     }
   }
   p = (char*)alloc_block + alloc_block->size;
-  if (right_block && (mem_block*)p == right_block) {
+  if ((mem_block*)p == right_block) {
     merge_right = true;
   }
 

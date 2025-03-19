@@ -30,19 +30,20 @@ typedef struct mem_block {
  * area. Returns true if the heap area is successfully set and false if there
  * is insufficient contiguous memory.
  */
-bool heap_init(unsigned int size_of_region);
+bool heap_init(unsigned int heap_size);
 
 /* Returns a pointer to the start of the payload or `NULL` if there is not
  * enough contiguous free space within the memory allocated by `heap_init()`
- * to satisfy the request.
+ * to satisfy the request. If the size requested is not a multiple of 8 bytes,
+ * extra bytes will be added to enforce 8-byte alignment.
  */
-void *kmalloc(unsigned int size_of_payload);
+void *kmalloc(unsigned int num_bytes);
 
 /* Returns a pointer to the start of the payload or `NULL` if there is not
  * enough contiguous free space within the memory allocated by `heap_init()`
  * to satisfy the request. The memory is zeroed out.
 */
-void *kcalloc(unsigned int num_elements, unsigned int size_of_element);
+void *kcalloc(unsigned int num_elements, unsigned int element_size);
 
 /* Frees the target block given the address of the start of the payload. */
 void kfree(void *ptr);
